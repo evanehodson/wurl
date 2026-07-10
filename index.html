@@ -10,7 +10,24 @@
 </head>
 <body>
     <div id="map"></div>
-    <script src="app.js"></script>
+    <div id="top-controls">
+        <div id="compass" title="Drag to rotate view">
+                <div id="compass-arrow">
+                    <span id="compass-n">N</span>
+                    <span id="compass-arrow-icon">▲</span>
+                    <span id="compass-s">S</span>
+                </div>
+            </div>
+        <div id="button-pill">
+            <button id="zoom-in">+</button>
+            <button id="zoom-out">−</button>
+            <button id="mode-btn">2D</button>
+        </div>
+    </div>
+    <div id="elevation-profile">
+        <canvas id="profile-canvas"></canvas>
+    </div>
     <script src="https://unpkg.com/deck.gl@^9.0.0/dist.min.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>
