@@ -11,3 +11,40 @@ body, html {
     width: 100%;
     height: 100%;
 }
+
+/* Container styling for the 3D Billboard structure */
+.marker-billboard {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.5));
+    transition: transform 0.2s ease;
+}
+
+.marker-billboard:hover {
+    transform: scale(1.15); /* Adds feedback when hovering over a checkpoint */
+}
+
+/* The structural vertical anchor line pinning the label to the mountaintop */
+.billboard-pin {
+    width: 2px;
+    height: 30px; /* Adjusts how high the text card hovers above the peak */
+    background: linear-gradient(to top, #00ffcc, rgba(0, 255, 204, 0.2));
+}
+
+/* The clean text card displaying the name */
+.billboard-label {
+    background-color: rgba(17, 17, 17, 0.9);
+    color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 6px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    white-space: nowrap;
+    margin-top: -4px; /* Pulls label up cleanly from the vertical pin line */
+}
