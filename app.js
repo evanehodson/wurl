@@ -1,18 +1,16 @@
-const TRAIL_COLOR = [255, 107, 53, 220];
-
 const map = new maplibregl.Map({
     container: 'map',
     style: {
         version: 8,
         sources: {
-            'versatiles-satellite': {
+            'satellite': {
                 type: 'raster',
                 tiles: ['https://tiles.versatiles.org/tiles/satellite/{z}/{x}/{y}'],
                 tileSize: 256,
                 maxzoom: 18
             }
         },
-        layers: [{ id: 'satellite-layer', type: 'raster', source: 'versatiles-satellite' }],
+        layers: [{ id: 'satellite-layer', type: 'raster', source: 'satellite' }],
         lights: [
             {
                 id: 'sun',
@@ -145,12 +143,12 @@ map.on('load', async () => {
     map.setTerrain({ source: 'terrainSource', exaggeration: 1.5 });
 
     map.setSky({
-        'sky-color': '#88aacc',
-        'horizon-color': '#88aacc',
-        'fog-color': '#88aacc',
-        'horizon-fog-blend': 0.8,
-        'fog-ground-blend': 0.8,
-        'sky-horizon-blend': 0.6
+        'sky-color': '#aaccee',
+        'horizon-color': '#aaccee',
+        'fog-color': '#aaccee',
+        'horizon-fog-blend': 0.35,
+        'fog-ground-blend': 0.45,
+        'sky-horizon-blend': 0.5
     });
 
     try {
@@ -194,7 +192,6 @@ map.on('load', async () => {
 
         const EXAG = 1.5;
 
-        // MapLibre native trail line — properly depth-tested against terrain
         map.addSource('trail-source', {
             type: 'geojson',
             data: {
@@ -207,17 +204,8 @@ map.on('load', async () => {
             }
         });
 
-        map.addLayer({
-            id: 'trail-line',
-            type: 'line',
-            source: 'trail-source',
-            paint: {
-                'line-color': '#ff6b35',
-                'line-width': 8,
-                'line-opacity': 0.85,
-                'line-blur': 1
-            }
-        });
+        map.addLayer({ id: 'trail-line', type: 'line', source: 'trail-source',
+            paint: { 'line-color': '#ff6b35', 'line-width': 5, 'line-opacity': 0.9 } });
 
         // deck.gl labels (float above terrain, no occlusion needed)
         const deckOverlay = new deck.MapboxOverlay({
@@ -256,7 +244,6 @@ map.on('load', async () => {
                 })
             ]
         });
-
         map.addControl(deckOverlay);
 
         // ── Elevation Profile (black-on-white with grid) ────
