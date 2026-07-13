@@ -175,6 +175,10 @@ map.on('load', async () => {
             profile.push({ dist: cumDist, ele });
         }
 
+        const KNOWN_LENGTH_MI = 33.4;
+        const distScale = KNOWN_LENGTH_MI / cumDist;
+        profile.forEach(p => p.dist *= distScale);
+
         const wptEls = xml.getElementsByTagName('wpt');
         const waypoints = [];
         for (let j = 0; j < wptEls.length; j++) {
@@ -282,10 +286,15 @@ map.on('load', async () => {
 
         const canvas = document.getElementById('profile-canvas');
         const ctx = canvas.getContext('2d');
+        const profilePanel = document.getElementById('elevation-profile');
+        const toggleBtn = document.getElementById('profile-toggle');
+
+        let hoverDist = null;
 
         function drawProfile() {
             const parent = canvas.parentElement;
             const w = parent.clientWidth, h = parent.clientHeight;
+            if (w === 0 || h === 0) return;
             canvas.width = w * devicePixelRatio;
             canvas.height = h * devicePixelRatio;
             ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
@@ -294,7 +303,6 @@ map.on('load', async () => {
 
             ctx.clearRect(0, 0, w, h);
 
-            // Background
             ctx.fillStyle = '#fff';
             ctx.fillRect(0, 0, w, h);
 
@@ -306,7 +314,7 @@ map.on('load', async () => {
             const maxD = dists[dists.length - 1];
             const rangeE = maxE - minE || 1;
 
-            // Grid lines (horizontal, 4 evenly-spaced)
+            // Horizontal grid
             ctx.strokeStyle = '#e0e0e0';
             ctx.lineWidth = 0.5;
             for (let g = 0; g <= 4; g++) {
@@ -315,7 +323,6 @@ map.on('load', async () => {
                 ctx.moveTo(pad.left, y);
                 ctx.lineTo(pad.left + pw, y);
                 ctx.stroke();
-                // Label
                 const val = maxE - (g / 4) * rangeE;
                 ctx.fillStyle = '#999';
                 ctx.font = '8px sans-serif';
@@ -323,28 +330,29 @@ map.on('load', async () => {
                 ctx.fillText(`${Math.round(val)}'`, pad.left - 5, y + 3);
             }
 
-            // Vertical grid lines
-            ctx.strokeStyle = '#f0f0f0';
-            ctx.lineWidth = 0.5;
-            for (let g = 0; g <= 4; g++) {
-                const x = pad.left + (g / 4) * pw;
-                ctx.beginPath();
-                ctx.moveTo(x, pad.top);
-                ctx.lineTo(x, pad.top + ph);
-                ctx.stroke();
-            }
-
-            // Distance label
-            ctx.fillStyle = '#999';
+            // Vertical grid + mile markers
+            const totalMi = maxD;
             ctx.font = '8px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText(`${(maxD * 0.621371).toFixed(1)} mi`, pad.left + pw / 2, h - 5);
-
-            // Title
-            ctx.fillStyle = '#333';
-            ctx.font = '9px sans-serif';
-            ctx.textAlign = 'left';
-            ctx.fillText('ELEVATION PROFILE', pad.left, 13);
+            for (let m = 1; m <= totalMi; m++) {
+                const mx = pad.left + (m / totalMi) * pw;
+                ctx.strokeStyle = '#f0f0f0';
+                ctx.lineWidth = 0.5;
+                ctx.beginPath();
+                ctx.moveTo(mx, pad.top);
+                ctx.lineTo(mx, pad.top + ph);
+                ctx.stroke();
+                // Tick
+                ctx.strokeStyle = '#ccc';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(mx, pad.top + ph);
+                ctx.lineTo(mx, pad.top + ph + 4);
+                ctx.stroke();
+                // Label
+                ctx.fillStyle = '#999';
+                ctx.fillText(`${m}`, mx, pad.top + ph + 14);
+            }
 
             // Fill under curve
             const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ph);
@@ -372,10 +380,73 @@ map.on('load', async () => {
             ctx.strokeStyle = '#d85a2a';
             ctx.lineWidth = 1.5;
             ctx.stroke();
+
+            // Hover indicator
+            if (hoverDist !== null) {
+                const hx = pad.left + (hoverDist / maxD) * pw;
+                // Vertical line
+                ctx.beginPath();
+                ctx.moveTo(hx, pad.top);
+                ctx.lineTo(hx, pad.top + ph);
+                ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                // Interpolate elevation at hover distance
+                let hy = pad.top, eleAtHover = minE;
+                for (let i = 1; i < profile.length; i++) {
+                    if (dists[i] >= hoverDist) {
+                        const t = (hoverDist - dists[i - 1]) / (dists[i] - dists[i - 1]);
+                        eleAtHover = elevs[i - 1] + t * (elevs[i] - elevs[i - 1]);
+                        hy = pad.top + ph - ((eleAtHover - minE) / rangeE) * ph;
+                        break;
+                    }
+                }
+                // Dot
+                ctx.beginPath();
+                ctx.arc(hx, hy, 4, 0, Math.PI * 2);
+                ctx.fillStyle = '#d85a2a';
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                // Label
+                ctx.fillStyle = '#333';
+                ctx.font = 'bold 10px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${hoverDist.toFixed(1)} mi  ·  ${Math.round(eleAtHover)} ft`, hx, pad.top - 5);
+            }
         }
 
         drawProfile();
         window.addEventListener('resize', drawProfile);
+
+        // Redraw after CSS transition completes
+        profilePanel.addEventListener('transitionend', () => drawProfile());
+
+        // Toggle panel
+        toggleBtn.addEventListener('click', () => {
+            profilePanel.classList.toggle('collapsed');
+        });
+
+        // ── Hover tracking: map → elevation profile ────
+
+        map.on('mousemove', (e) => {
+            let minSq = Infinity;
+            let nearest = null;
+            for (let i = 0; i < pathPoints.length; i++) {
+                const sp = map.project([pathPoints[i].lon, pathPoints[i].lat]);
+                const sq = (sp.x - e.point.x) ** 2 + (sp.y - e.point.y) ** 2;
+                if (sq < minSq) { minSq = sq; nearest = profile[i].dist; }
+            }
+            if (minSq < 900) {
+                hoverDist = nearest;
+            } else {
+                hoverDist = null;
+            }
+            drawProfile();
+        });
+
+        map.on('mouseleave', () => { hoverDist = null; drawProfile(); });
 
         map.fitBounds(bounds, { padding: 60, duration: 3500, pitch: 55, bearing: -15 });
 

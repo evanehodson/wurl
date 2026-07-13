@@ -121,19 +121,63 @@ body, html {
 
 #elevation-profile {
     position: absolute;
-    bottom: 20px;
-    left: 20px;
-    width: 340px;
-    height: 160px;
-    background: rgba(255,255,255,0.92);
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    padding: 8px;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 220px;
     z-index: 10;
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.3s ease;
+}
+
+#elevation-profile.collapsed {
+    transform: translateY(calc(100% - 18px));
+}
+
+#profile-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 18px;
+    margin: 0 auto;
+    background: rgba(255,255,255,0.35);
+    border: none;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    z-index: 2;
+    flex-shrink: 0;
+    padding: 0;
+    opacity: 0.5;
+    transition: opacity 0.2s ease;
+}
+
+#profile-toggle:hover {
+    opacity: 1;
+    background: rgba(255,255,255,0.7);
+}
+
+#toggle-arrow {
+    font-size: 10px;
+    color: #555;
+    transition: transform 0.3s ease;
+    line-height: 1;
+}
+
+#elevation-profile:not(.collapsed) #toggle-arrow {
+    transform: rotate(180deg);
+}
+
+#profile-content {
+    flex: 1;
     overflow: hidden;
+    background: rgba(255,255,255,0.92);
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.15);
 }
 
 #profile-canvas {
     width: 100%;
     height: 100%;
+    display: block;
 }
