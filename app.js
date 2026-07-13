@@ -206,20 +206,24 @@ map.on('load', async () => {
             id: 'trail-line',
             type: 'line',
             source: 'trail-line',
+            layout: {
+                'line-join': 'round',
+                'line-cap': 'round'
+            },
             paint: {
                 'line-color': '#ff6b35',
                 'line-width': [
                     'interpolate', ['exponential', 2], ['zoom'],
-                    9, 0.125,
-                    10, 0.25,
-                    11, 0.5,
-                    12, 1.0,
-                    13, 2.0,
-                    14, 4.0,
-                    15, 8.0,
-                    16, 16.0,
-                    17, 32.0,
-                    18, 64.0
+                    9, 0.215,
+                    10, 0.43,
+                    11, 0.86,
+                    12, 1.72,
+                    13, 3.44,
+                    14, 6.89,
+                    15, 13.78,
+                    16, 27.55,
+                    17, 55.1,
+                    18, 110.2
                 ],
                 'line-opacity': 1.0,
                 'line-blur': 0
