@@ -18,6 +18,12 @@ const map = new maplibregl.Map({
                 direction: [210, 55],
                 color: '#ffffff',
                 intensity: 1.0
+            },
+            {
+                id: 'ambient',
+                type: 'ambient',
+                color: '#fff5e6',
+                intensity: 0.35
             }
         ]
     },
@@ -143,12 +149,13 @@ map.on('load', async () => {
     map.setTerrain({ source: 'terrainSource', exaggeration: 1.5 });
 
     map.setSky({
-        'sky-color': '#aaccee',
-        'horizon-color': '#aaccee',
-        'fog-color': '#aaccee',
-        'horizon-fog-blend': 0.35,
-        'fog-ground-blend': 0.45,
-        'sky-horizon-blend': 0.5
+        'sky-color': '#1a6fb5',
+        'horizon-color': '#e8dcc8',
+        'fog-color': '#d4cbbf',
+        'sky-horizon-blend': 0.45,
+        'horizon-fog-blend': 0.5,
+        'fog-ground-blend': 0.65,
+        'atmosphere-blend': 0.8
     });
 
     try {
@@ -206,6 +213,22 @@ map.on('load', async () => {
                 }
             }
         });
+        map.addLayer({
+            id: 'trail-glow',
+            type: 'line',
+            source: 'trail-line',
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: {
+                'line-color': '#ff6b35',
+                'line-width': [
+                    'interpolate', ['exponential', 2], ['zoom'],
+                    9, 1.0, 10, 2.0, 11, 4.0, 12, 8.0,
+                    13, 16.0, 14, 32.0, 15, 64.0, 16, 128.0, 17, 256.0, 18, 512.0
+                ],
+                'line-opacity': 0.25,
+                'line-blur': 6
+            }
+        }, 'trail-line');
         map.addLayer({
             id: 'trail-line',
             type: 'line',
