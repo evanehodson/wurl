@@ -1,3 +1,6 @@
+import * as THREE from 'three';
+console.log('[trail] Three.js loaded:', typeof THREE, 'r' + THREE.REVISION);
+
 const map = new maplibregl.Map({
     container: 'map',
     style: {
@@ -192,22 +195,75 @@ map.on('load', async () => {
 
         const EXAG = 1.5;
 
-        map.addSource('trail-source', {
-            type: 'geojson',
-            data: {
-                type: 'Feature',
-                properties: {},
-                geometry: {
-                    type: 'LineString',
-                    coordinates: pathPoints.map(p => [p.lon, p.lat])
+        const trailResult = buildTrailMesh(pathPoints, 15, EXAG);
+        console.log('[trail] mesh built:', trailResult);
+        if (trailResult) {
+            console.log('[trail] vertices:', trailResult.geometry.attributes.position.count);
+            console.log('[trail] origin:', trailResult.originMerc.x, trailResult.originMerc.y, trailResult.originMerc.z);
+            console.log('[trail] meterScale:', trailResult.meterScale);
+        }
+        const trailLayer = {
+            id: 'trail-mesh',
+            type: 'custom',
+            renderingMode: '3d',
+
+            onAdd(map, gl) {
+                console.log('[trail] onAdd');
+                this.camera = new THREE.Camera();
+                this.scene = new THREE.Scene();
+                this.scene.rotateX(Math.PI / 2);
+                this.scene.scale.multiply(new THREE.Vector3(1, 1, -1));
+
+                const material = new THREE.MeshBasicMaterial({
+                    color: 0xff6b35,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                this.mesh = new THREE.Mesh(trailResult.geometry, material);
+                this.scene.add(this.mesh);
+
+                this.renderer = new THREE.WebGLRenderer({
+                    canvas: map.getCanvas(),
+                    context: gl,
+                    antialias: true
+                });
+                this.renderer.autoClear = false;
+            },
+
+            render(gl, args) {
+                if (!this._logged) {
+                    this._logged = true;
+                    console.log('[trail] render args type:', args.constructor.name, 'length:', args.length);
                 }
+                const m = new THREE.Matrix4().fromArray(args);
+                const o = trailResult.originMerc;
+                const s = trailResult.meterScale;
+                const l = new THREE.Matrix4()
+                    .makeTranslation(o.x, o.y, o.z)
+                    .scale(new THREE.Vector3(s, -s, s));
+                this.camera.projectionMatrix = m.multiply(l);
+                this.renderer.resetState();
+                this.renderer.render(this.scene, this.camera);
+                const err = gl.getError();
+                if (err !== gl.NO_ERROR) console.error('[trail] GL error:', err);
+            },
+
+            onRemove() {
+                this.mesh.geometry.dispose();
+                this.mesh.material.dispose();
             }
-        });
+        };
+        map.addLayer(trailLayer);
+        console.log('[trail] layer added to map');
 
-        map.addLayer({ id: 'trail-line', type: 'line', source: 'trail-source',
-            paint: { 'line-color': '#ff6b35', 'line-width': 5, 'line-opacity': 0.9 } });
-
-        // deck.gl labels (float above terrain, no occlusion needed)
+        // deck.gl labels with depth-based sizing (PeakVisor-style)
+        const labelDepth = (d) => {
+            const c = map.getCenter();
+            return Math.max(0.15, Math.min(1, 1 - haversine(d.lon, d.lat, c.lng, c.lat) / 20));
+        };
+        const labelSize = () => Math.max(12, Math.min(18, (map.getZoom() - 8) * 2));
+        const offset = (i) => [[0, 0], [-80, 0], [80, 0], [-80, -22], [80, -22]][i % 5];
         const deckOverlay = new deck.MapboxOverlay({
             interleaved: true,
             layers: [
@@ -216,10 +272,11 @@ map.on('load', async () => {
                     data: waypoints,
                     getPosition: d => [d.lon, d.lat, d.ele * EXAG + 80],
                     getText: d => d.name,
-                    getSize: 16,
-                    getColor: [255, 255, 255, 255],
-                    getOutlineColor: [0, 0, 0, 200],
+                    getSize: d => labelSize() * labelDepth(d),
+                    getColor: d => { const a = Math.round(labelDepth(d) * 255); return [255, 255, 255, a]; },
+                    getOutlineColor: d => { const a = Math.round(labelDepth(d) * 200); return [0, 0, 0, a]; },
                     getOutlineWidth: 2.5,
+                    getPixelOffset: (_, {index}) => offset(index),
                     getTextAnchor: 'middle',
                     getAlignmentBaseline: 'bottom',
                     billboard: true,
@@ -232,10 +289,11 @@ map.on('load', async () => {
                     data: waypoints,
                     getPosition: d => [d.lon, d.lat, d.ele * EXAG + 58],
                     getText: d => `${Math.round(d.eleFt)} ft`,
-                    getSize: 11,
-                    getColor: [255, 220, 180, 255],
-                    getOutlineColor: [0, 0, 0, 180],
+                    getSize: d => labelSize() * 0.7 * labelDepth(d),
+                    getColor: d => { const a = Math.round(labelDepth(d) * 255); return [255, 220, 180, a]; },
+                    getOutlineColor: d => { const a = Math.round(labelDepth(d) * 180); return [0, 0, 0, a]; },
                     getOutlineWidth: 1.5,
+                    getPixelOffset: (_, {index}) => offset(index),
                     getTextAnchor: 'middle',
                     getAlignmentBaseline: 'top',
                     billboard: true,
@@ -359,4 +417,95 @@ function haversine(lon1, lat1, lon2, lat2) {
     const a = Math.sin(dLat / 2) ** 2 +
               Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function buildTrailMesh(pathPoints, widthMeters, exag) {
+    const n = pathPoints.length;
+    if (n < 2) return null;
+
+    const halfWidth = widthMeters / 2;
+    const elevOffset = 0.5;
+
+    const originMerc = maplibregl.MercatorCoordinate.fromLngLat(
+        [pathPoints[0].lon, pathPoints[0].lat], 0
+    );
+    const meterScale = originMerc.meterInMercatorCoordinateUnits();
+
+    function toScene(p) {
+        const merc = maplibregl.MercatorCoordinate.fromLngLat([p.lon, p.lat], 0);
+        return [
+            (merc.x - originMerc.x) / meterScale,
+            p.ele * exag + elevOffset,
+            -(merc.y - originMerc.y) / meterScale
+        ];
+    }
+
+    const scenePos = pathPoints.map(toScene);
+
+    const positions = new Float32Array(n * 2 * 3);
+    const indices = [];
+
+    for (let i = 0; i < n; i++) {
+        const [cx, cy, cz] = scenePos[i];
+        let perpX, perpZ;
+
+        if (i === 0) {
+            const dx = scenePos[1][0] - scenePos[0][0];
+            const dz = scenePos[1][2] - scenePos[0][2];
+            const len = Math.sqrt(dx * dx + dz * dz);
+            perpX = (-dz / len) * halfWidth;
+            perpZ = (dx / len) * halfWidth;
+        } else if (i === n - 1) {
+            const dx = scenePos[n - 1][0] - scenePos[n - 2][0];
+            const dz = scenePos[n - 1][2] - scenePos[n - 2][2];
+            const len = Math.sqrt(dx * dx + dz * dz);
+            perpX = (-dz / len) * halfWidth;
+            perpZ = (dx / len) * halfWidth;
+        } else {
+            const dx1 = scenePos[i][0] - scenePos[i - 1][0];
+            const dz1 = scenePos[i][2] - scenePos[i - 1][2];
+            const len1 = Math.sqrt(dx1 * dx1 + dz1 * dz1);
+            const nx1 = -dz1 / len1, nz1 = dx1 / len1;
+
+            const dx2 = scenePos[i + 1][0] - scenePos[i][0];
+            const dz2 = scenePos[i + 1][2] - scenePos[i][2];
+            const len2 = Math.sqrt(dx2 * dx2 + dz2 * dz2);
+            const nx2 = -dz2 / len2, nz2 = dx2 / len2;
+
+            let ax = nx1 + nx2;
+            let az = nz1 + nz2;
+            const aLen = Math.sqrt(ax * ax + az * az);
+
+            if (aLen < 1e-6) {
+                perpX = nx1 * halfWidth;
+                perpZ = nz1 * halfWidth;
+            } else {
+                const cosHalf = aLen / 2;
+                const miterLen = halfWidth / Math.max(cosHalf, 0.3);
+                const clamped = Math.min(miterLen, halfWidth * 2.5);
+                perpX = (ax / aLen) * clamped;
+                perpZ = (az / aLen) * clamped;
+            }
+        }
+
+        const li = i * 6;
+        positions[li]     = cx + perpX;
+        positions[li + 1] = cy;
+        positions[li + 2] = cz + perpZ;
+        positions[li + 3] = cx - perpX;
+        positions[li + 4] = cy;
+        positions[li + 5] = cz - perpZ;
+    }
+
+    for (let i = 0; i < n - 1; i++) {
+        const a = i * 2, b = i * 2 + 1;
+        const c = (i + 1) * 2, d = (i + 1) * 2 + 1;
+        indices.push(a, b, c, b, d, c);
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+    return { geometry: geom, originMerc, meterScale };
 }
