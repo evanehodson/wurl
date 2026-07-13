@@ -231,22 +231,24 @@ map.on('load', async () => {
                 this.renderer.autoClear = false;
             },
 
-            render(gl, args) {
+            render(gl, matrix) {
                 if (!this._logged) {
                     this._logged = true;
-                    console.log('[trail] render args type:', args.constructor.name, 'length:', args.length);
+                    console.log('[trail] render args type:', matrix.constructor.name, 'length:', matrix.length);
                 }
-                const m = new THREE.Matrix4().fromArray(args);
-                const o = trailResult.originMerc;
-                const s = trailResult.meterScale;
+                const offsetFromCenterElevation = map.queryTerrainElevation(trailResult.originLngLat) || 0;
+                const originMerc = maplibregl.MercatorCoordinate.fromLngLat(
+                    trailResult.originLngLat, offsetFromCenterElevation
+                );
+                const m = new THREE.Matrix4().fromArray(matrix);
+                const s = originMerc.meterInMercatorCoordinateUnits();
                 const l = new THREE.Matrix4()
-                    .makeTranslation(o.x, o.y, o.z)
+                    .makeTranslation(originMerc.x, originMerc.y, originMerc.z)
                     .scale(new THREE.Vector3(s, -s, s));
                 this.camera.projectionMatrix = m.multiply(l);
                 this.renderer.resetState();
                 this.renderer.render(this.scene, this.camera);
-                const err = gl.getError();
-                if (err !== gl.NO_ERROR) console.error('[trail] GL error:', err);
+                map.triggerRepaint();
             },
 
             onRemove() {
@@ -426,16 +428,15 @@ function buildTrailMesh(pathPoints, widthMeters, exag) {
     const halfWidth = widthMeters / 2;
     const elevOffset = 0.5;
 
-    const originMerc = maplibregl.MercatorCoordinate.fromLngLat(
-        [pathPoints[0].lon, pathPoints[0].lat], 0
-    );
+    const originLngLat = [pathPoints[0].lon, pathPoints[0].lat];
+    const originMerc = maplibregl.MercatorCoordinate.fromLngLat(originLngLat, 0);
     const meterScale = originMerc.meterInMercatorCoordinateUnits();
 
     function toScene(p) {
         const merc = maplibregl.MercatorCoordinate.fromLngLat([p.lon, p.lat], 0);
         return [
             (merc.x - originMerc.x) / meterScale,
-            p.ele * exag + elevOffset,
+            (p.ele - pathPoints[0].ele) * exag + elevOffset,
             -(merc.y - originMerc.y) / meterScale
         ];
     }
@@ -507,5 +508,5 @@ function buildTrailMesh(pathPoints, widthMeters, exag) {
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geom.setIndex(indices);
     geom.computeVertexNormals();
-    return { geometry: geom, originMerc, meterScale };
+    return { geometry: geom, originLngLat, originMerc, meterScale };
 }
