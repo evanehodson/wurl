@@ -25,7 +25,8 @@ const map = new maplibregl.Map({
                 color: '#fff5e6',
                 intensity: 0.35
             }
-        ]
+        ],
+        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf'
     },
     center: [-111.70, 40.56],
     zoom: 11,
@@ -201,8 +202,6 @@ map.on('load', async () => {
             waypoints.push({ name, lon, lat, ele: nearestEle, eleFt: nearestEle * 3.28084 });
         }
 
-        const EXAG = 1.5;
-
         map.addSource('trail-line', {
             type: 'geojson',
             data: {
@@ -256,54 +255,186 @@ map.on('load', async () => {
                 'line-blur': 0
             }
         });
-        console.log('[trail] native line layer added');
 
-        // deck.gl labels with depth-based sizing (PeakVisor-style)
-        const labelDepth = (d) => {
-            const c = map.getCenter();
-            return Math.max(0.15, Math.min(1, 1 - haversine(d.lon, d.lat, c.lng, c.lat) / 20));
-        };
-        const labelSize = () => Math.max(12, Math.min(18, (map.getZoom() - 8) * 2));
-        const offset = (i) => [[0, 0], [-80, 0], [80, 0], [-80, -22], [80, -22]][i % 5];
-        const deckOverlay = new deck.MapboxOverlay({
-            interleaved: true,
-            layers: [
-                new deck.TextLayer({
-                    id: 'waypoint-names',
-                    data: waypoints,
-                    getPosition: d => [d.lon, d.lat, d.ele * EXAG + 80],
-                    getText: d => d.name,
-                    getSize: d => labelSize() * labelDepth(d),
-                    getColor: d => { const a = Math.round(labelDepth(d) * 255); return [255, 255, 255, a]; },
-                    getOutlineColor: d => { const a = Math.round(labelDepth(d) * 200); return [0, 0, 0, a]; },
-                    getOutlineWidth: 2.5,
-                    getPixelOffset: (_, {index}) => offset(index),
-                    getTextAnchor: 'middle',
-                    getAlignmentBaseline: 'bottom',
-                    billboard: true,
-                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                    fontWeight: 'bold',
-                    characterSet: 'auto'
-                }),
-                new deck.TextLayer({
-                    id: 'waypoint-elevations',
-                    data: waypoints,
-                    getPosition: d => [d.lon, d.lat, d.ele * EXAG + 58],
-                    getText: d => `${Math.round(d.eleFt)} ft`,
-                    getSize: d => labelSize() * 0.7 * labelDepth(d),
-                    getColor: d => { const a = Math.round(labelDepth(d) * 255); return [255, 220, 180, a]; },
-                    getOutlineColor: d => { const a = Math.round(labelDepth(d) * 180); return [0, 0, 0, a]; },
-                    getOutlineWidth: 1.5,
-                    getPixelOffset: (_, {index}) => offset(index),
-                    getTextAnchor: 'middle',
-                    getAlignmentBaseline: 'top',
-                    billboard: true,
-                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                    characterSet: 'auto'
-                })
-            ]
+        // ── Start / Finish 3D torus (WebGL) ─────────────────
+
+        const startFinish = [waypoints[0], waypoints[waypoints.length - 1]];
+
+        function bearingTo(lon1, lat1, lon2, lat2) {
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const lat1r = lat1 * Math.PI / 180;
+            const lat2r = lat2 * Math.PI / 180;
+            const y = Math.sin(dLon) * Math.cos(lat2r);
+            const x = Math.cos(lat1r) * Math.sin(lat2r) - Math.sin(lat1r) * Math.cos(lat2r) * Math.cos(dLon);
+            return Math.atan2(y, x) * 180 / Math.PI;
+        }
+
+        function calcBearing(points, startIdx, count) {
+            let sumSin = 0, sumCos = 0;
+            const end = Math.min(startIdx + count, points.length - 1);
+            for (let i = startIdx; i < end; i++) {
+                const b = bearingTo(points[i].lon, points[i].lat, points[i + 1].lon, points[i + 1].lat) * Math.PI / 180;
+                sumSin += Math.sin(b);
+                sumCos += Math.cos(b);
+            }
+            return Math.atan2(sumSin, sumCos) * 180 / Math.PI;
+        }
+
+        const startBearing = calcBearing(pathPoints, 0, 20);
+        const finishBearing = calcBearing(pathPoints, pathPoints.length - 21, 20);
+
+        const TORUS_R = 50, TORUS_r = 8;
+        const SEG_RING = 80, SEG_TUBE = 24;
+
+        const ringDefs = [
+            { wp: startFinish[0], bearing: startBearing, label: 'START',  speed: 1.0 },
+            { wp: startFinish[1], bearing: finishBearing, label: 'FINISH', speed: 0.7 }
+        ];
+
+        function makeTextCanvas(label) {
+            const c = document.createElement('canvas');
+            c.width = 1024; c.height = 256;
+            const cx = c.getContext('2d');
+            cx.fillStyle = '#ff6b35';
+            cx.fillRect(0, 0, 1024, 256);
+            cx.strokeStyle = '#cc5528';
+            cx.lineWidth = 2;
+            for (let i = 0; i < 3; i++) {
+                cx.strokeRect(i * 1024 / 3 + 20, 20, 1024 / 3 - 40, 216);
+            }
+            cx.fillStyle = '#ffffff';
+            cx.font = 'bold 80px Oswald, sans-serif';
+            cx.textAlign = 'center';
+            cx.textBaseline = 'middle';
+            for (let i = 0; i < 3; i++) {
+                cx.fillText(label, (i + 0.5) * 1024 / 3, 128);
+            }
+            return c;
+        }
+
+        let ringAngle = 0;
+        const FLOATS = 8;
+        const STRIDE = FLOATS * 4;
+
+        function torusVert(theta, phi, cosB, sinB, wp) {
+            const cp = Math.cos(phi), sp = Math.sin(phi);
+            const ct = Math.cos(theta), st = Math.sin(theta);
+            const x = (TORUS_R + TORUS_r * cp) * ct;
+            const y = (TORUS_R + TORUS_r * cp) * st;
+            const z = TORUS_r * sp;
+            const x2 = z, y2 = y, z2 = x;
+            const wx = x2 * sinB + z2 * cosB;
+            const wy = x2 * cosB - z2 * sinB;
+            const wz = y2;
+            const terrainEle = map.queryTerrainElevation([wp.lon, wp.lat]) || 0;
+            const mc = maplibregl.MercatorCoordinate.fromLngLat(
+                [wp.lon + wx / (111320 * Math.cos(wp.lat * Math.PI / 180)),
+                 wp.lat + wy / 111320], terrainEle + wz);
+            const nx2 = sp, ny2 = cp * st, nz2 = cp * ct;
+            const nnx = nx2 * sinB + nz2 * cosB;
+            const nny = nx2 * cosB - nz2 * sinB;
+            const nnz = ny2;
+            const shade = 0.35 + 0.65 * Math.max(0, nnx * 0.3 - nny * 0.5 + nnz * 0.85);
+            const u = theta / (Math.PI * 2);
+            const v = (phi + Math.PI) / (Math.PI * 2);
+            return [mc.x, mc.y, mc.z, shade, u, v, 0, 0];
+        }
+
+        function buildTorus(wp, bearingDeg, angle) {
+            const b = bearingDeg * Math.PI / 180;
+            const cosB = Math.cos(b), sinB = Math.sin(b);
+            const out = [];
+            for (let i = 0; i < SEG_RING; i++) {
+                const t1 = (i / SEG_RING) * Math.PI * 2 + angle;
+                const t2 = ((i + 1) / SEG_RING) * Math.PI * 2 + angle;
+                for (let j = 0; j < SEG_TUBE; j++) {
+                    const p1 = ((j / SEG_TUBE) - 0.5) * Math.PI * 2;
+                    const p2 = (((j + 1) / SEG_TUBE) - 0.5) * Math.PI * 2;
+                    const a = torusVert(t1, p1, cosB, sinB, wp);
+                    const c = torusVert(t1, p2, cosB, sinB, wp);
+                    const d = torusVert(t2, p2, cosB, sinB, wp);
+                    const e = torusVert(t2, p1, cosB, sinB, wp);
+                    out.push(...a, ...c, ...d, ...d, ...e, ...a);
+                }
+            }
+            return new Float32Array(out);
+        }
+
+        map.addLayer({
+            id: 'ring-3d', type: 'custom', renderingMode: '3d',
+            onAdd: function(m, gl) {
+                this.map = m;
+                this.buf = gl.createBuffer();
+
+                const vsSrc = 'attribute vec3 aPos;attribute float aShade;attribute vec2 aUV;uniform mat4 uMat;varying float vS;varying vec2 vUV;void main(){gl_Position=uMat*vec4(aPos,1.0);vS=aShade;vUV=aUV;}';
+                const fsSrc = 'precision mediump float;uniform sampler2D uTex;varying float vS;varying vec2 vUV;void main(){vec4 c=texture2D(uTex,vUV);gl_FragColor=vec4(c.rgb*vS,c.a);}';
+
+                function mkShader(type, src) {
+                    const s = gl.createShader(type);
+                    gl.shaderSource(s, src);
+                    gl.compileShader(s);
+                    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+                        console.error('[ring-3d] shader:', gl.getShaderInfoLog(s));
+                    }
+                    return s;
+                }
+
+                const vs = mkShader(gl.VERTEX_SHADER, vsSrc);
+                const fs = mkShader(gl.FRAGMENT_SHADER, fsSrc);
+                this.prg = gl.createProgram();
+                gl.attachShader(this.prg, vs);
+                gl.attachShader(this.prg, fs);
+                gl.linkProgram(this.prg);
+                if (!gl.getProgramParameter(this.prg, gl.LINK_STATUS)) {
+                    console.error('[ring-3d] link:', gl.getProgramInfoLog(this.prg));
+                }
+
+                this.aPos   = gl.getAttribLocation(this.prg, 'aPos');
+                this.aShade = gl.getAttribLocation(this.prg, 'aShade');
+                this.aUV    = gl.getAttribLocation(this.prg, 'aUV');
+                this.uMat   = gl.getUniformLocation(this.prg, 'uMat');
+                this.uTex   = gl.getUniformLocation(this.prg, 'uTex');
+                this.textures = [];
+                for (const def of ringDefs) {
+                    const tex = gl.createTexture();
+                    gl.bindTexture(gl.TEXTURE_2D, tex);
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, makeTextCanvas(def.label));
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                    this.textures.push(tex);
+                }
+            },
+            render: function(gl, matrix) {
+                gl.useProgram(this.prg);
+                gl.enable(gl.DEPTH_TEST);
+                gl.depthFunc(gl.LEQUAL);
+                gl.uniformMatrix4fv(this.uMat, false, matrix);
+                gl.uniform1i(this.uTex, 0);
+                gl.activeTexture(gl.TEXTURE0);
+
+                for (let i = 0; i < ringDefs.length; i++) {
+                    const r = ringDefs[i];
+                    const data = buildTorus(r.wp, r.bearing, ringAngle * r.speed);
+                    gl.bindTexture(gl.TEXTURE_2D, this.textures[i]);
+                    gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
+                    gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+
+                    gl.enableVertexAttribArray(this.aPos);
+                    gl.vertexAttribPointer(this.aPos, 3, gl.FLOAT, false, STRIDE, 0);
+                    gl.enableVertexAttribArray(this.aShade);
+                    gl.vertexAttribPointer(this.aShade, 1, gl.FLOAT, false, STRIDE, 12);
+                    gl.enableVertexAttribArray(this.aUV);
+                    gl.vertexAttribPointer(this.aUV, 2, gl.FLOAT, false, STRIDE, 16);
+
+                    gl.drawArrays(gl.TRIANGLES, 0, data.length / FLOATS);
+                }
+
+                ringAngle += 0.018;
+                this.map.triggerRepaint();
+            }
         });
-        map.addControl(deckOverlay);
 
         // ── Elevation Profile (black-on-white with grid) ────
 
