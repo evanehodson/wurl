@@ -185,7 +185,7 @@ map.on('load', async () => {
             profile.push({ dist: cumDist, ele });
         }
 
-        const KNOWN_LENGTH_MI = 33.4;
+        const KNOWN_LENGTH_MI = 35.6;
         const distScale = KNOWN_LENGTH_MI / cumDist;
         profile.forEach(p => p.dist *= distScale);
 

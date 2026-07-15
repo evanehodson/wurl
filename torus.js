@@ -63,14 +63,9 @@ function torusVert(theta, phi, cosB, sinB, wp, origin, map, angle) {
     const vertex = maplibregl.MercatorCoordinate.fromLngLat(
         [wp.lon + wx / (111320 * Math.cos(wp.lat * Math.PI / 180)),
          wp.lat + wy / 111320], terrainEle + wz + ELEVATION_BIAS);
-    const nx2 = sp, ny2 = cp * st, nz2 = cp * ct;
-    const nnx = nx2 * sinB + nz2 * cosB;
-    const nny = nx2 * cosB - nz2 * sinB;
-    const nnz = ny2;
-    const shade = 0.35 + 0.65 * Math.max(0, nnx * 0.3 - nny * 0.5 + nnz * 0.85);
     const u = (theta - angle) / (Math.PI * 2);
     const v = (phi + Math.PI + angle) / (Math.PI * 2);
-    return [vertex.x - origin.x, vertex.y - origin.y, vertex.z - origin.z, shade, u, v, 0, 0];
+    return [vertex.x - origin.x, vertex.y - origin.y, vertex.z - origin.z, u, v, 0, 0, 0];
 }
 
 function buildTorus(wp, bearingDeg, angle, map) {
@@ -118,8 +113,8 @@ export function createTorusLayer(map, pathPoints, waypoints) {
     let ringAngle = 0;
 
     // Removed direct coordinate addition (uOrigin + aPos) to prevent 32-bit float precision loss
-    const vsSrc = 'attribute vec3 aPos;attribute float aShade;attribute vec2 aUV;uniform mat4 uMat;varying float vS;varying vec2 vUV;void main(){gl_Position=uMat*vec4(aPos,1.0);vS=aShade;vUV=aUV;}';
-    const fsSrc = 'precision mediump float;uniform sampler2D uTex;varying float vS;varying vec2 vUV;void main(){vec4 c=texture2D(uTex,vUV);gl_FragColor=vec4(c.rgb*vS,c.a);}';
+    const vsSrc = 'attribute vec3 aPos;attribute vec2 aUV;uniform mat4 uMat;varying vec2 vUV;void main(){gl_Position=uMat*vec4(aPos,1.0);vUV=aUV;}';
+    const fsSrc = 'precision mediump float;uniform sampler2D uTex;varying vec2 vUV;void main(){gl_FragColor=texture2D(uTex,vUV);}';
 
     return {
         id: 'ring-3d', type: 'custom', renderingMode: '3d',
@@ -148,7 +143,6 @@ export function createTorusLayer(map, pathPoints, waypoints) {
             }
 
             this.aPos   = gl.getAttribLocation(this.prg, 'aPos');
-            this.aShade = gl.getAttribLocation(this.prg, 'aShade');
             this.aUV    = gl.getAttribLocation(this.prg, 'aUV');
             this.uMat   = gl.getUniformLocation(this.prg, 'uMat');
             this.uTex   = gl.getUniformLocation(this.prg, 'uTex');
@@ -192,10 +186,8 @@ export function createTorusLayer(map, pathPoints, waypoints) {
 
                 gl.enableVertexAttribArray(this.aPos);
                 gl.vertexAttribPointer(this.aPos, 3, gl.FLOAT, false, STRIDE, 0);
-                gl.enableVertexAttribArray(this.aShade);
-                gl.vertexAttribPointer(this.aShade, 1, gl.FLOAT, false, STRIDE, 12);
                 gl.enableVertexAttribArray(this.aUV);
-                gl.vertexAttribPointer(this.aUV, 2, gl.FLOAT, false, STRIDE, 16);
+                gl.vertexAttribPointer(this.aUV, 2, gl.FLOAT, false, STRIDE, 12);
 
                 gl.drawArrays(gl.TRIANGLES, 0, vertices.length / FLOATS);
             }
