@@ -28,7 +28,7 @@ const map = new maplibregl.Map({
                 intensity: 0.35
             }
         ],
-        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf'
+        glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf'
     },
     center: [-111.70, 40.56],
     zoom: 11,
@@ -161,6 +161,71 @@ map.on('load', async () => {
         'atmosphere-blend': 0.8
     });
 
+    // ── Vector tile labels (peaks, park names) ────────────────
+
+    map.addSource('openfreemap', {
+        type: 'vector',
+        url: 'https://tiles.openfreemap.org/planet'
+    });
+
+    // Mountain peak icon (sharp brown triangle + rounded outward white buffer stroke)
+    const S = 32;
+    const triData = new Uint8Array(S * S * 4);
+    function segDist(px, py, ax, ay, bx, by) {
+        const dx = bx - ax, dy = by - ay;
+        const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+        const ex = px - (ax + t * dx), ey = py - (ay + t * dy);
+        return Math.sqrt(ex * ex + ey * ey);
+    }
+    function cross2(ax, ay, bx, by) { return ax * by - ay * bx; }
+    const tA = [16, 3], tB = [3, 27], tC = [29, 27];
+    const strokeR = 3, aa = 1.0;
+    for (let y = 0; y < S; y++) {
+        for (let x = 0; x < S; x++) {
+            const px = x + 0.5, py = y + 0.5;
+            const d1 = cross2(px - tA[0], py - tA[1], tB[0] - tA[0], tB[1] - tA[1]);
+            const d2 = cross2(px - tB[0], py - tB[1], tC[0] - tB[0], tC[1] - tB[1]);
+            const d3 = cross2(px - tC[0], py - tC[1], tA[0] - tC[0], tA[1] - tC[1]);
+            const inside = (d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0);
+            const eDist = Math.min(segDist(px, py, tA[0], tA[1], tB[0], tB[1]), segDist(px, py, tB[0], tB[1], tC[0], tC[1]), segDist(px, py, tC[0], tC[1], tA[0], tA[1]));
+            const sd = inside ? -eDist : eDist;
+            const i = (y * S + x) * 4;
+            if (sd < 0) {
+                triData[i] = 139; triData[i + 1] = 69; triData[i + 2] = 19; triData[i + 3] = 255;
+            } else if (sd < strokeR) {
+                triData[i] = 255; triData[i + 1] = 255; triData[i + 2] = 255;
+                triData[i + 3] = Math.round(Math.min(1, Math.max(0, 1 - (sd - strokeR + aa) / aa)) * 255);
+            }
+        }
+    }
+    map.addImage('peak-icon', { width: S, height: S, data: triData });
+
+    // Park/forest name labels (billboarded in screen space)
+    map.addLayer({
+        id: 'park-labels',
+        type: 'symbol',
+        source: 'openfreemap',
+        'source-layer': 'park',
+        minzoom: 9,
+        layout: {
+            'text-field': '{name}',
+            'text-font': ['Noto Sans Italic'],
+            'text-size': 12,
+            'text-letter-spacing': 0.15,
+            'text-transform': 'uppercase',
+            'text-pitch-alignment': 'viewport',
+            'text-rotation-alignment': 'viewport',
+            'symbol-placement': 'point',
+            'symbol-spacing': 300,
+            'text-padding': 50
+        },
+        paint: {
+            'text-color': '#d4edda',
+            'text-halo-color': '#1a3a1a',
+            'text-halo-width': 2
+        }
+    });
+
     try {
         const resp = await fetch('data/WURL_Wasatch_Ultimate_Ridge_Linkup.gpx');
         const text = await resp.text();
@@ -259,6 +324,33 @@ map.on('load', async () => {
         });
 
         map.addLayer(createTorusLayer(map, pathPoints, waypoints));
+
+        // Peak labels on top of everything
+        map.addLayer({
+            id: 'mountain-peaks',
+            type: 'symbol',
+            source: 'openfreemap',
+            'source-layer': 'mountain_peak',
+            filter: ['==', 'class', 'peak'],
+            minzoom: 10,
+            layout: {
+                'icon-image': 'peak-icon',
+                'icon-size': 0.35,
+                'icon-anchor': 'bottom',
+                'text-field': ['concat', ['get', 'name'], '\n', ['get', 'ele_ft'], ' ft'],
+                'text-font': ['Noto Sans Italic'],
+                'text-size': 9,
+                'text-anchor': 'bottom',
+                'text-offset': [0, -1.2],
+                'text-pitch-alignment': 'viewport',
+                'text-rotation-alignment': 'viewport'
+            },
+            paint: {
+                'text-color': '#8B4513',
+                'text-halo-color': '#ffffff',
+                'text-halo-width': 1.2
+            }
+        });
 
         // ── Elevation Profile (black-on-white with grid) ────
 
