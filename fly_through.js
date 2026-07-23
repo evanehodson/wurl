@@ -48,27 +48,22 @@ function interpAt(cum, pts, dist) {
 }
 
 export function initFlyThrough(map, pathPoints) {
-    var SPEED = 800;
+    var SPEED = 1200;
     var CAM_ABOVE = 1000;
     var EARTH_CIRC = 40075016.686;
-    var HEADING_LOOKBACK = SPEED * 5;
+    var HEADING_FORWARD = SPEED * 2;
+    var LOOK_AHEAD = SPEED * 2;
+    var LERP_RATE = 3;
 
     var cumDist = buildCumDist(pathPoints);
     var totalLen = cumDist[cumDist.length - 1];
 
-    var maxEle = 0;
-    for (var i = 0; i < pathPoints.length; i++) {
-        if (pathPoints[i].ele > maxEle) maxEle = pathPoints[i].ele;
-    }
-    var camAlt = maxEle * 1.5 + CAM_ABOVE;
-    var avgLat = (pathPoints[0].lat + pathPoints[pathPoints.length - 1].lat) / 2;
-    var fixedZoom = Math.log2(EARTH_CIRC * Math.cos(toRad(avgLat)) / camAlt);
-    fixedZoom = Math.max(2, Math.min(18, fixedZoom));
-
     var progress = 0;
     var lastTime = null;
+    var smoothLon = null, smoothLat = null, smoothBearing = null, smoothZoom = null, smoothSurfEle = null;
 
     var btn = document.getElementById('flythrough-btn');
+    var restartBtn = document.getElementById('flythrough-restart');
     var runnerSource = null;
     var runnerExists = false;
 
@@ -147,25 +142,67 @@ export function initFlyThrough(map, pathPoints) {
             } catch (e) { }
         }
 
-        var lookbackPos = interpAt(cumDist, pathPoints, Math.max(0, progress - HEADING_LOOKBACK));
-        var heading = bearingDeg(lookbackPos.lon, lookbackPos.lat, dot.lon, dot.lat);
+        var headingDx = 0, headingDy = 0;
+        var hSamples = 20;
+        var aheadEnd = Math.min(progress + HEADING_FORWARD, totalLen);
+        for (var i = 0; i < hSamples; i++) {
+            var d1 = progress + (aheadEnd - progress) * i / hSamples;
+            var d2 = Math.min(d1 + SPEED * 0.1, aheadEnd);
+            var p1 = interpAt(cumDist, pathPoints, d1);
+            var p2 = interpAt(cumDist, pathPoints, d2);
+            var b = toRad(bearingDeg(p1.lon, p1.lat, p2.lon, p2.lat));
+            headingDx += Math.cos(b);
+            headingDy += Math.sin(b);
+        }
+        var targetBearing = (toDeg(Math.atan2(headingDy, headingDx)) + 360) % 360;
+
+        var maxAheadEle = dot.ele;
+        for (var t = 0; t <= LOOK_AHEAD; t += SPEED * 0.5) {
+            var p = interpAt(cumDist, pathPoints, Math.min(progress + t, totalLen));
+            if (p.ele > maxAheadEle) maxAheadEle = p.ele;
+        }
+        var targetZoom = Math.log2(EARTH_CIRC * Math.cos(toRad(dot.lat)) / (maxAheadEle * 1.5 + CAM_ABOVE));
+        targetZoom = Math.max(2, Math.min(18, targetZoom));
+
+        if (smoothLon === null) {
+            smoothLon = dot.lon;
+            smoothLat = dot.lat;
+            smoothBearing = targetBearing;
+            smoothZoom = targetZoom;
+            smoothSurfEle = dot.ele;
+        }
+
+        var lerp = 1 - Math.exp(-LERP_RATE * dt);
+        var posLerp = 1 - Math.exp(-1.0 * dt);
+        var slowLerp = 1 - Math.exp(-0.8 * dt);
+        smoothLon += (dot.lon - smoothLon) * posLerp;
+        smoothLat += (dot.lat - smoothLat) * posLerp;
+        smoothZoom += (targetZoom - smoothZoom) * lerp;
+
+        var bDiff = targetBearing - smoothBearing;
+        if (bDiff > 180) bDiff -= 360;
+        if (bDiff < -180) bDiff += 360;
+        smoothBearing = ((smoothBearing + bDiff * lerp) % 360 + 360) % 360;
 
         var surfEle = dot.ele;
         try {
             var qe = map.queryTerrainElevation([dot.lon, dot.lat]);
             if (qe != null && !isNaN(qe)) surfEle = qe;
         } catch (e) { }
+        smoothSurfEle += (surfEle - smoothSurfEle) * slowLerp;
 
-        var headRad = toRad(heading);
+        var headRad = toRad(smoothBearing);
         var cosLat = Math.cos(toRad(dot.lat));
-        var dLat = surfEle * Math.cos(headRad) / 111320;
-        var dLon = surfEle * Math.sin(headRad) / (111320 * cosLat);
+        var dLat = smoothSurfEle * Math.cos(headRad) / 111320;
+        var dLon = smoothSurfEle * Math.sin(headRad) / (111320 * cosLat);
 
-        map.jumpTo({
+        map.easeTo({
             center: [dot.lon + dLon, dot.lat + dLat],
-            bearing: heading,
+            bearing: smoothBearing,
             pitch: 45,
-            zoom: fixedZoom
+            zoom: smoothZoom,
+            duration: 50,
+            easing: function(t) { return t; }
         });
 
         if (progress >= totalLen) {
@@ -176,36 +213,85 @@ export function initFlyThrough(map, pathPoints) {
         animFrame = requestAnimationFrame(tick);
     }
 
+    function updateButtons() {
+        if (running) {
+            btn.innerHTML = '&#10074;&#10074;';
+            btn.title = 'Pause flythrough';
+            btn.classList.add('active');
+            if (restartBtn) restartBtn.style.display = 'flex';
+        } else {
+            btn.innerHTML = '&#9654;';
+            btn.title = progress > 0 && progress < totalLen ? 'Resume flythrough' : 'Play flythrough';
+            btn.classList.remove('active');
+            if (restartBtn) restartBtn.style.display = progress > 0 ? 'flex' : 'none';
+        }
+    }
+
+    function pauseAll() {
+        running = false;
+        if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+        updateButtons();
+    }
+
     function stopAll() {
         running = false;
         if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
-        btn.classList.remove('active');
-        btn.innerHTML = '&#9654;';
-        btn.title = 'Play flythrough';
+        progress = 0;
+        lastTime = null;
+        smoothLon = null;
+        smoothLat = null;
+        smoothBearing = null;
+        smoothZoom = null;
+        smoothSurfEle = null;
+        updateButtons();
         removeRunner();
     }
 
-    btn.addEventListener('click', function () {
-        if (running) {
-            stopAll();
-            return;
-        }
-
+    function resumeAll() {
         running = true;
-        progress = 0;
         lastTime = null;
-        btn.classList.add('active');
-        btn.innerHTML = '&#9209;';
-        btn.title = 'Stop flythrough';
-
+        updateButtons();
         try {
             ensureRunner();
             animFrame = requestAnimationFrame(tick);
         } catch (e) {
             running = false;
-            btn.classList.remove('active');
-            btn.innerHTML = '&#9654;';
-            btn.title = 'Play flythrough';
+            updateButtons();
         }
+    }
+
+    btn.addEventListener('click', function () {
+        if (running) {
+            pauseAll();
+            return;
+        }
+
+        if (progress > 0 && progress < totalLen) {
+            resumeAll();
+            return;
+        }
+
+        progress = 0;
+        lastTime = null;
+        smoothLon = null;
+        smoothLat = null;
+        smoothBearing = null;
+        smoothZoom = null;
+        smoothSurfEle = null;
+        resumeAll();
     });
+
+    if (restartBtn) {
+        restartBtn.addEventListener('click', function () {
+            stopAll();
+            progress = 0;
+            lastTime = null;
+            smoothLon = null;
+            smoothLat = null;
+            smoothBearing = null;
+            smoothZoom = null;
+            smoothSurfEle = null;
+            resumeAll();
+        });
+    }
 }
