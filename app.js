@@ -1,4 +1,5 @@
 import { createTorusLayer } from './torus.js';
+import { initFlyThrough } from './fly_through.js';
 
 const map = new maplibregl.Map({
     container: 'map',
@@ -324,6 +325,8 @@ map.on('load', async () => {
         });
 
         map.addLayer(createTorusLayer(map, pathPoints, waypoints));
+
+        initFlyThrough(map, pathPoints);
 
         // Peak labels on top of everything
         map.addLayer({

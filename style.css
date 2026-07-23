@@ -12,6 +12,37 @@ body, html {
     height: 100%;
 }
 
+#flythrough-btn {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    z-index: 10;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255,255,255,0.92);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    color: #333;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    line-height: 1;
+    padding: 0;
+}
+
+#flythrough-btn:hover {
+    background: rgba(255,255,255,1);
+}
+
+#flythrough-btn.active {
+    background: #ff6b35;
+    color: #fff;
+}
+
 #top-controls {
     position: absolute;
     top: 12px;
