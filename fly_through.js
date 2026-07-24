@@ -49,7 +49,7 @@ function interpAt(cum, pts, dist) {
 
 export function initFlyThrough(map, pathPoints, onProgress) {
     var SPEED = 1200;
-    var CAM_ABOVE = 5000;
+    var CAM_ABOVE = 3000;
     var EARTH_CIRC = 40075016.686;
     var HEADING_FORWARD = SPEED * 2;
     var LOOK_AHEAD = SPEED * 2;
@@ -165,7 +165,7 @@ export function initFlyThrough(map, pathPoints, onProgress) {
             var p = interpAt(cumDist, pathPoints, Math.min(progress + t, totalLen));
             if (p.ele > maxAheadEle) maxAheadEle = p.ele;
         }
-        var targetZoom = Math.log2(EARTH_CIRC * Math.cos(toRad(dot.lat)) / (maxAheadEle * 2 + CAM_ABOVE));
+        var targetZoom = Math.log2(EARTH_CIRC * Math.cos(toRad(dot.lat)) / (maxAheadEle * 1.5 + CAM_ABOVE));
         targetZoom = Math.max(2, Math.min(18, targetZoom));
 
         if (smoothBearing === null) {
