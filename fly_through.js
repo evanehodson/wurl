@@ -60,7 +60,7 @@ export function initFlyThrough(map, pathPoints) {
 
     var progress = 0;
     var lastTime = null;
-    var smoothLon = null, smoothLat = null, smoothBearing = null, smoothZoom = null, smoothSurfEle = null;
+    var smoothBearing = null, smoothZoom = null, smoothSurfEle = null;
 
     var btn = document.getElementById('flythrough-btn');
     var restartBtn = document.getElementById('flythrough-restart');
@@ -87,12 +87,15 @@ export function initFlyThrough(map, pathPoints) {
             var c = document.createElement('canvas');
             c.width = S; c.height = S;
             var cx = c.getContext('2d');
+            cx.shadowColor = '#ff3366';
+            cx.shadowBlur = 12;
             cx.beginPath();
             cx.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2);
-            cx.fillStyle = '#ff6b35';
+            cx.fillStyle = '#ff3366';
             cx.fill();
-            cx.lineWidth = 4;
-            cx.strokeStyle = '#fff';
+            cx.shadowBlur = 0;
+            cx.lineWidth = 7;
+            cx.strokeStyle = '#ffffff';
             cx.stroke();
             map.addImage('runner-dot', {
                 width: S, height: S,
@@ -106,8 +109,10 @@ export function initFlyThrough(map, pathPoints) {
             source: 'fly-runner',
             layout: {
                 'icon-image': 'runner-dot',
-                'icon-size': 0.5,
-                'icon-allow-overlap': true
+                'icon-size': 0.3,
+                'icon-allow-overlap': true,
+                'icon-pitch-alignment': 'map',
+                'icon-rotation-alignment': 'map'
             }
         });
 
@@ -164,19 +169,14 @@ export function initFlyThrough(map, pathPoints) {
         var targetZoom = Math.log2(EARTH_CIRC * Math.cos(toRad(dot.lat)) / (maxAheadEle * 1.5 + CAM_ABOVE));
         targetZoom = Math.max(2, Math.min(18, targetZoom));
 
-        if (smoothLon === null) {
-            smoothLon = dot.lon;
-            smoothLat = dot.lat;
+        if (smoothBearing === null) {
             smoothBearing = targetBearing;
             smoothZoom = targetZoom;
             smoothSurfEle = dot.ele;
         }
 
         var lerp = 1 - Math.exp(-LERP_RATE * dt);
-        var posLerp = 1 - Math.exp(-1.0 * dt);
         var slowLerp = 1 - Math.exp(-0.8 * dt);
-        smoothLon += (dot.lon - smoothLon) * posLerp;
-        smoothLat += (dot.lat - smoothLat) * posLerp;
         smoothZoom += (targetZoom - smoothZoom) * lerp;
 
         var bDiff = targetBearing - smoothBearing;
@@ -196,12 +196,13 @@ export function initFlyThrough(map, pathPoints) {
         var dLat = smoothSurfEle * Math.cos(headRad) / 111320;
         var dLon = smoothSurfEle * Math.sin(headRad) / (111320 * cosLat);
 
+        var easeMs = Math.max(Math.round(dt * 1000), 1);
         map.easeTo({
             center: [dot.lon + dLon, dot.lat + dLat],
             bearing: smoothBearing,
             pitch: 45,
             zoom: smoothZoom,
-            duration: 50,
+            duration: easeMs,
             easing: function(t) { return t; }
         });
 
@@ -238,8 +239,6 @@ export function initFlyThrough(map, pathPoints) {
         if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
         progress = 0;
         lastTime = null;
-        smoothLon = null;
-        smoothLat = null;
         smoothBearing = null;
         smoothZoom = null;
         smoothSurfEle = null;
@@ -273,8 +272,6 @@ export function initFlyThrough(map, pathPoints) {
 
         progress = 0;
         lastTime = null;
-        smoothLon = null;
-        smoothLat = null;
         smoothBearing = null;
         smoothZoom = null;
         smoothSurfEle = null;
@@ -286,8 +283,6 @@ export function initFlyThrough(map, pathPoints) {
             stopAll();
             progress = 0;
             lastTime = null;
-            smoothLon = null;
-            smoothLat = null;
             smoothBearing = null;
             smoothZoom = null;
             smoothSurfEle = null;

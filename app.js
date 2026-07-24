@@ -281,21 +281,32 @@ map.on('load', async () => {
             }
         });
         map.addLayer({
-            id: 'trail-glow',
+            id: 'trail-outline',
             type: 'line',
             source: 'trail-line',
-            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            layout: {
+                'line-join': 'round',
+                'line-cap': 'round'
+            },
             paint: {
-                'line-color': '#ff6b35',
+                'line-color': '#ffffff',
                 'line-width': [
                     'interpolate', ['exponential', 2], ['zoom'],
-                    9, 1.0, 10, 2.0, 11, 4.0, 12, 8.0,
-                    13, 16.0, 14, 32.0, 15, 64.0, 16, 128.0, 17, 256.0, 18, 512.0
+                    9, 0.415,
+                    10, 0.83,
+                    11, 1.66,
+                    12, 3.32,
+                    13, 6.64,
+                    14, 13.29,
+                    15, 26.58,
+                    16, 53.15,
+                    17, 106.3,
+                    18, 212.6
                 ],
-                'line-opacity': 0.25,
-                'line-blur': 6
+                'line-opacity': 1.0,
+                'line-blur': 0
             }
-        }, 'trail-line');
+        });
         map.addLayer({
             id: 'trail-line',
             type: 'line',
@@ -305,7 +316,7 @@ map.on('load', async () => {
                 'line-cap': 'round'
             },
             paint: {
-                'line-color': '#ff6b35',
+                'line-color': '#ff3366',
                 'line-width': [
                     'interpolate', ['exponential', 2], ['zoom'],
                     9, 0.215,
@@ -429,8 +440,8 @@ map.on('load', async () => {
 
             // Fill under curve
             const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ph);
-            grad.addColorStop(0, 'rgba(255, 107, 53, 0.12)');
-            grad.addColorStop(1, 'rgba(255, 107, 53, 0.01)');
+            grad.addColorStop(0, 'rgba(255, 51, 102, 0.12)');
+            grad.addColorStop(1, 'rgba(255, 51, 102, 0.01)');
             ctx.beginPath();
             ctx.moveTo(pad.left, pad.top + ph);
             for (let i = 0; i < profile.length; i++) {
@@ -450,7 +461,7 @@ map.on('load', async () => {
                 const y = pad.top + ph - ((elevs[i] - minE) / rangeE) * ph;
                 i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
             }
-            ctx.strokeStyle = '#d85a2a';
+            ctx.strokeStyle = '#ff3366';
             ctx.lineWidth = 1.5;
             ctx.stroke();
 
@@ -477,7 +488,7 @@ map.on('load', async () => {
                 // Dot
                 ctx.beginPath();
                 ctx.arc(hx, hy, 4, 0, Math.PI * 2);
-                ctx.fillStyle = '#d85a2a';
+                ctx.fillStyle = '#ff3366';
                 ctx.fill();
                 ctx.strokeStyle = '#fff';
                 ctx.lineWidth = 1.5;

@@ -39,7 +39,7 @@ body, html {
 }
 
 #flythrough-btn.active {
-    background: #ff6b35;
+    background: #ff3366;
     color: #fff;
 }
 
@@ -172,7 +172,7 @@ body, html {
 }
 
 #mode-btn.active {
-    color: #d85a2a;
+    color: #ff3366;
     font-weight: 800;
 }
 
