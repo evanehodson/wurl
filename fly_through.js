@@ -63,7 +63,10 @@ export function initFlyThrough(map, pathPoints) {
     var smoothBearing = null, smoothZoom = null, smoothSurfEle = null;
 
     var btn = document.getElementById('flythrough-btn');
-    var restartBtn = document.getElementById('flythrough-restart');
+    var playIcon = document.getElementById('play-icon');
+    var pauseIcon = document.getElementById('pause-icon');
+    var backBtn = document.getElementById('flythrough-back');
+    var stopBtn = document.getElementById('flythrough-stop');
     var runnerSource = null;
     var runnerExists = false;
 
@@ -216,27 +219,31 @@ export function initFlyThrough(map, pathPoints) {
 
     function updateButtons() {
         if (running) {
-            btn.innerHTML = '&#10074;&#10074;';
+            playIcon.style.display = 'none';
+            pauseIcon.style.display = 'block';
             btn.title = 'Pause flythrough';
             btn.classList.add('active');
-            if (restartBtn) restartBtn.style.display = 'flex';
+            if (stopBtn) stopBtn.style.display = 'flex';
         } else {
-            btn.innerHTML = '&#9654;';
+            playIcon.style.display = 'block';
+            pauseIcon.style.display = 'none';
             btn.title = progress > 0 && progress < totalLen ? 'Resume flythrough' : 'Play flythrough';
             btn.classList.remove('active');
-            if (restartBtn) restartBtn.style.display = progress > 0 ? 'flex' : 'none';
+            if (stopBtn) stopBtn.style.display = progress > 0 ? 'flex' : 'none';
         }
     }
 
     function pauseAll() {
         running = false;
         if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+        map.stop();
         updateButtons();
     }
 
     function stopAll() {
         running = false;
         if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+        map.stop();
         progress = 0;
         lastTime = null;
         smoothBearing = null;
@@ -278,8 +285,8 @@ export function initFlyThrough(map, pathPoints) {
         resumeAll();
     });
 
-    if (restartBtn) {
-        restartBtn.addEventListener('click', function () {
+    if (backBtn) {
+        backBtn.addEventListener('click', function () {
             stopAll();
             progress = 0;
             lastTime = null;
@@ -287,6 +294,12 @@ export function initFlyThrough(map, pathPoints) {
             smoothZoom = null;
             smoothSurfEle = null;
             resumeAll();
+        });
+    }
+
+    if (stopBtn) {
+        stopBtn.addEventListener('click', function () {
+            stopAll();
         });
     }
 }

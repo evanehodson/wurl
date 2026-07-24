@@ -12,61 +12,46 @@ body, html {
     height: 100%;
 }
 
-#flythrough-btn {
+#flythrough-controls {
     position: absolute;
     top: 14px;
     left: 14px;
     z-index: 10;
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    background: rgba(255,255,255,0.92);
+    border-radius: 22px;
+    padding: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+#flythrough-controls button {
     width: 44px;
     height: 44px;
     border-radius: 50%;
     border: none;
-    background: rgba(255,255,255,0.92);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    background: transparent;
     color: #333;
-    font-size: 18px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: background 0.2s;
-    line-height: 1;
     padding: 0;
 }
 
-#flythrough-btn:hover {
-    background: rgba(255,255,255,1);
+#flythrough-controls button:hover {
+    background: rgba(0,0,0,0.08);
+}
+
+#flythrough-controls button:active {
+    background: rgba(0,0,0,0.15);
 }
 
 #flythrough-btn.active {
     background: #ff3366;
     color: #fff;
-}
-
-#flythrough-restart {
-    position: absolute;
-    top: 64px;
-    left: 14px;
-    z-index: 10;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    border: none;
-    background: rgba(255,255,255,0.92);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    color: #333;
-    font-size: 18px;
-    cursor: pointer;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.2s;
-    line-height: 1;
-    padding: 0;
-}
-
-#flythrough-restart:hover {
-    background: rgba(255,255,255,1);
 }
 
 #top-controls {
