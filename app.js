@@ -401,6 +401,10 @@ map.on('load', async () => {
             return d / (KNOWN_LENGTH_MI / cumDist);
         }
 
+        function milesToFlyMeters(mi) {
+            return mi * 1609.34;
+        }
+
         function drawProfile() {
             const parent = canvas.parentElement;
             const w = parent.clientWidth, h = parent.clientHeight;
@@ -581,7 +585,7 @@ map.on('load', async () => {
                 if (sq < minSq) { minSq = sq; nearestPt = pathPoints[i]; nearestIdx = i; }
             }
             if (minSq < 900 && nearestPt) {
-                const meterDist = cumDistArr[nearestIdx];
+                const meterDist = milesToFlyMeters(cumDistArr[nearestIdx]);
                 flyThrough.setProgress(meterDist);
                 runnerDist = (meterDist / 1609.34) * (KNOWN_LENGTH_MI / cumDist);
                 flyThrough.moveRunner(nearestPt.lon, nearestPt.lat);
@@ -644,7 +648,7 @@ map.on('load', async () => {
             const dists = profile.map(p => p.dist);
             const maxD = dists[dists.length - 1];
             const clickDist = (relX / pw) * maxD;
-            const meterDist = distToMeters(clickDist);
+            const meterDist = milesToFlyMeters(distToMeters(clickDist));
             const coords = interpProfileCoords(clickDist);
             flyThrough.setProgress(meterDist);
             flyThrough.moveRunner(coords.lon, coords.lat);
