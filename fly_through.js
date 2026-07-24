@@ -47,7 +47,7 @@ function interpAt(cum, pts, dist) {
     };
 }
 
-export function initFlyThrough(map, pathPoints) {
+export function initFlyThrough(map, pathPoints, onProgress) {
     var SPEED = 1200;
     var CAM_ABOVE = 1000;
     var EARTH_CIRC = 40075016.686;
@@ -67,67 +67,67 @@ export function initFlyThrough(map, pathPoints) {
     var pauseIcon = document.getElementById('pause-icon');
     var backBtn = document.getElementById('flythrough-back');
     var stopBtn = document.getElementById('flythrough-stop');
-    var runnerSource = null;
-    var runnerExists = false;
 
-    function ensureRunner() {
-        if (runnerExists) {
-            try { map.removeLayer('fly-runner-layer'); } catch (e) { }
-            try { map.removeSource('fly-runner'); } catch (e) { }
-            runnerExists = false;
-        }
+    // Create runner source and layer once
+    map.addSource('fly-runner', {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'Point', coordinates: [pathPoints[0].lon, pathPoints[0].lat] } }
+    });
 
-        map.addSource('fly-runner', {
-            type: 'geojson',
-            data: {
-                type: 'Feature',
-                geometry: { type: 'Point', coordinates: [pathPoints[0].lon, pathPoints[0].lat] }
-            }
+    if (!map.hasImage('runner-dot')) {
+        var S = 64;
+        var c = document.createElement('canvas');
+        c.width = S; c.height = S;
+        var cx = c.getContext('2d');
+        cx.shadowColor = '#ff3366';
+        cx.shadowBlur = 12;
+        cx.beginPath();
+        cx.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2);
+        cx.fillStyle = '#ff3366';
+        cx.fill();
+        cx.shadowBlur = 0;
+        cx.lineWidth = 7;
+        cx.strokeStyle = '#ffffff';
+        cx.stroke();
+        map.addImage('runner-dot', {
+            width: S, height: S,
+            data: cx.getImageData(0, 0, S, S).data
         });
-
-        if (!map.hasImage('runner-dot')) {
-            var S = 64;
-            var c = document.createElement('canvas');
-            c.width = S; c.height = S;
-            var cx = c.getContext('2d');
-            cx.shadowColor = '#ff3366';
-            cx.shadowBlur = 12;
-            cx.beginPath();
-            cx.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2);
-            cx.fillStyle = '#ff3366';
-            cx.fill();
-            cx.shadowBlur = 0;
-            cx.lineWidth = 7;
-            cx.strokeStyle = '#ffffff';
-            cx.stroke();
-            map.addImage('runner-dot', {
-                width: S, height: S,
-                data: cx.getImageData(0, 0, S, S).data
-            });
-        }
-
-        map.addLayer({
-            id: 'fly-runner-layer',
-            type: 'symbol',
-            source: 'fly-runner',
-            layout: {
-                'icon-image': 'runner-dot',
-                'icon-size': 0.3,
-                'icon-allow-overlap': true,
-                'icon-pitch-alignment': 'map',
-                'icon-rotation-alignment': 'map'
-            }
-        });
-
-        runnerSource = map.getSource('fly-runner');
-        runnerExists = true;
     }
 
-    function removeRunner() {
-        try { map.removeLayer('fly-runner-layer'); } catch (e) { }
-        try { map.removeSource('fly-runner'); } catch (e) { }
-        runnerSource = null;
-        runnerExists = false;
+    map.addLayer({
+        id: 'fly-runner-layer',
+        type: 'symbol',
+        source: 'fly-runner',
+        layout: {
+            'icon-image': 'runner-dot',
+            'icon-size': 0.3,
+            'icon-allow-overlap': true,
+            'icon-pitch-alignment': 'map',
+            'icon-rotation-alignment': 'map',
+            'visibility': 'none'
+        }
+    });
+
+    var runnerSource = map.getSource('fly-runner');
+
+    function moveRunner(lon, lat) {
+        if (runnerSource) {
+            try {
+                runnerSource.setData({
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: [lon, lat] }
+                });
+            } catch (e) { }
+        }
+    }
+
+    function showRunner() {
+        map.setLayoutProperty('fly-runner-layer', 'visibility', 'visible');
+    }
+
+    function hideRunner() {
+        map.setLayoutProperty('fly-runner-layer', 'visibility', 'none');
     }
 
     function tick(now) {
@@ -139,16 +139,12 @@ export function initFlyThrough(map, pathPoints) {
 
         progress = Math.min(progress + SPEED * dt, totalLen);
 
+        if (onProgress) onProgress(progress, totalLen);
+
         var dot = interpAt(cumDist, pathPoints, progress);
 
-        if (runnerSource) {
-            try {
-                runnerSource.setData({
-                    type: 'Feature',
-                    geometry: { type: 'Point', coordinates: [dot.lon, dot.lat] }
-                });
-            } catch (e) { }
-        }
+        moveRunner(dot.lon, dot.lat);
+        showRunner();
 
         var headingDx = 0, headingDy = 0;
         var hSamples = 20;
@@ -237,6 +233,7 @@ export function initFlyThrough(map, pathPoints) {
         running = false;
         if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
         map.stop();
+        if (onProgress) onProgress(progress, totalLen);
         updateButtons();
     }
 
@@ -249,8 +246,9 @@ export function initFlyThrough(map, pathPoints) {
         smoothBearing = null;
         smoothZoom = null;
         smoothSurfEle = null;
+        hideRunner();
+        if (onProgress) onProgress(0, totalLen);
         updateButtons();
-        removeRunner();
     }
 
     function resumeAll() {
@@ -258,7 +256,6 @@ export function initFlyThrough(map, pathPoints) {
         lastTime = null;
         updateButtons();
         try {
-            ensureRunner();
             animFrame = requestAnimationFrame(tick);
         } catch (e) {
             running = false;
@@ -302,4 +299,6 @@ export function initFlyThrough(map, pathPoints) {
             stopAll();
         });
     }
+
+    return { moveRunner, showRunner, hideRunner };
 }
