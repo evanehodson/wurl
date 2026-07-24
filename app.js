@@ -574,13 +574,22 @@ map.on('load', async () => {
             let minSq = Infinity;
             let nearest = null;
             let nearestPt = null;
+            let nearestIdx = 0;
             for (let i = 0; i < pathPoints.length; i++) {
                 const sp = map.project([pathPoints[i].lon, pathPoints[i].lat]);
                 const sq = (sp.x - e.point.x) ** 2 + (sp.y - e.point.y) ** 2;
-                if (sq < minSq) { minSq = sq; nearestPt = pathPoints[i]; }
+                if (sq < minSq) { minSq = sq; nearestPt = pathPoints[i]; nearestIdx = i; }
             }
             if (minSq < 900 && nearestPt) {
-                map.flyTo({ center: [nearestPt.lon, nearestPt.lat] });
+                const meterDist = cumDistArr[nearestIdx];
+                flyThrough.setProgress(meterDist);
+                runnerDist = (meterDist / 1609.34) * (KNOWN_LENGTH_MI / cumDist);
+                flyThrough.moveRunner(nearestPt.lon, nearestPt.lat);
+                flyThrough.showRunner();
+                map.jumpTo({
+                    center: [nearestPt.lon, nearestPt.lat]
+                });
+                drawProfile();
             }
         });
 
@@ -635,11 +644,15 @@ map.on('load', async () => {
             const dists = profile.map(p => p.dist);
             const maxD = dists[dists.length - 1];
             const clickDist = (relX / pw) * maxD;
+            const meterDist = distToMeters(clickDist);
             const coords = interpProfileCoords(clickDist);
+            flyThrough.setProgress(meterDist);
             flyThrough.moveRunner(coords.lon, coords.lat);
             flyThrough.showRunner();
             runnerDist = clickDist;
-            map.flyTo({ center: [coords.lon, coords.lat] });
+            map.jumpTo({
+                center: [coords.lon, coords.lat]
+            });
             drawProfile();
         });
 

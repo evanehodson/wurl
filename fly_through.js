@@ -300,5 +300,14 @@ export function initFlyThrough(map, pathPoints, onProgress) {
         });
     }
 
-    return { moveRunner, showRunner, hideRunner };
+    function setProgress(meters) {
+        progress = Math.max(0, Math.min(meters, totalLen));
+        lastTime = null;
+        smoothBearing = null;
+        smoothZoom = null;
+        smoothSurfEle = null;
+        if (onProgress) onProgress(progress, totalLen);
+    }
+
+    return { moveRunner, showRunner, hideRunner, setProgress };
 }
